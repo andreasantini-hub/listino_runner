@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Listino Clienti da CSV</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    body {
+      background-color: #f4f7fb;
+      padding: 2rem 1rem;
+    }
+    .card-header {
+      font-weight: 600;
+    }
+    .table-container {
+      max-height: 400px;
+      overflow: auto;
+      border: 1px solid #dee2e6;
+      border-radius: 0.5rem;
+      background: white;
+    }
+    .table-container table {
+      margin-bottom: 0;
+      font-size: 0.9rem;
+    }
+    .table-container th {
+      position: sticky;
+      top: 0;
+      background: #e9ecef;
+      z-index: 2;
+    }
+    .small-note {
+      font-size: 0.8rem;
+      color: #6c757d;
+    }
+    .col-check {
+      width: 40px;
+      text-align: center;
+    }
+    .table-container td.col-check,
+    .table-container th.col-check {
+      padding: 0.25rem;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .form-check-input {
+      cursor: pointer;
+    }
+    .toolbar {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .btn-disponibili-active {
+      background-color: #198754 !important;
+      color: white !important;
+      border-color: #198754 !important;
+    }
+    .riga-esaurita {
+      opacity: 0.55;
+      background-color: #f8d7da !important;
+    }
+    .filtri-pannello {
+      background-color: #f8f9fa;
+      border-bottom: 1px solid #dee2e6;
+      padding: 0.75rem 1rem;
+    }
+    .produttori-list {
+      max-height: 120px;
+      overflow-y: auto;
+      border: 1px solid #dee2e6;
+      border-radius: 0.375rem;
+      padding: 0.5rem;
+      background: white;
+      font-size: 0.85rem;
+    }
+    .produttori-list .form-check {
+      margin-bottom: 0.15rem;
+    }
+    .search-box {
+      position: relative;
+    }
+    .search-box .fa-search {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #6c757d;
+      pointer-events: none;
+    }
+    .search-box input {
+      padding-left: 32px;
+    }
+    .filtri-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #495057;
+      margin-bottom: 0.25rem;
+    }
+    .btn-reset-filtri {
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="text-center mb-4">
+    <h1 class="display-6">📋 Listino Clienti</h1>
+    <p class="lead">Carica il CSV del fornitore, imposta IVA e margine, genera il listino.</p>
+  </div>
+
+  <!-- Sezione 1: Upload file -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-primary text-white">
+      <i class="fas fa-upload me-2"></i>1. Carica file CSV (delimitatore ;)
+    </div>
+    <div class="card-body">
+      <input class="form-control" type="file" id="csvFile" accept=".csv, text/csv">
+      <div class="small-note mt-2">
+        Colonne attese: Codice, Descrizione, Categoria, Produttore, Prezzo, Disponibilita, InArrivo, Tips, Ean, Codice Produttore
+      </div>
+      <div id="uploadError" class="alert alert-danger mt-3 d-none"></div>
+    </div>
+  </div>
+
+  <!-- Sezione 2: Parametri -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-secondary text-white">
+      <i class="fas fa-sliders-h me-2"></i>2. Parametri
+    </div>
+    <div class="card-body row g-3 align-items-end">
+      <div class="col-md-4">
+        <label for="ivaInput" class="form-label">Aliquota IVA (%)</label>
+        <input type="number" class="form-control" id="ivaInput" value="22" step="0.1" min="0">
+      </div>
+      <div class="col-md-4">
+        <label for="margineInput" class="form-label">Margine (%)</label>
+        <input type="number" class="form-control" id="margineInput" value="15" step="0.1" min="0">
+      </div>
+      <div class="col-md-4">
+        <button class="btn btn-success w-100" id="generaBtn" disabled>
+          <i class="fas fa-cogs me-2"></i>Genera listino
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sezione 3: Anteprima -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-info text-white">
+      <i class="fas fa-table me-2"></i>3. Anteprima CSV (prime 10 righe)
+    </div>
+    <div class="card-body p-0">
+      <div class="table-container" style="max-height: 250px;">
+        <table class="table table-sm table-bordered table-hover mb-0" id="previewTable">
+          <thead class="table-light">
+            <tr id="previewHead"></tr>
+          </thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sezione 4: Listino generato -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span><i class="fas fa-list me-2"></i>Listino generato</span>
+      <div class="toolbar">
+        <button class="btn btn-light btn-sm" id="soloDisponibiliBtn" disabled>
+          <i class="fas fa-eye me-1"></i>Solo disponibili
+        </button>
+        <button class="btn btn-light btn-sm" id="selectAllBtn" disabled>
+          <i class="fas fa-check-square me-1"></i>Seleziona tutti
+        </button>
+        <button class="btn btn-light btn-sm" id="deselectAllBtn" disabled>
+          <i class="fas fa-square me-1"></i>Deseleziona tutti
+        </button>
+        <button class="btn btn-light btn-sm" id="scaricaPdfBtn" disabled>
+          <i class="fas fa-file-pdf me-1"></i>Scarica PDF
+        </button>
+      </div>
+    </div>
+
+    <!-- *** PANNELLO FILTRI *** -->
+    <div class="filtri-pannello" id="filtriPannello" style="display:none;">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-6">
+          <div class="filtri-label"><i class="fas fa-search me-1"></i>Ricerca nella Descrizione</div>
+          <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" class="form-control form-control-sm" id="searchDescrizione" placeholder="Scrivi per filtrare...">
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="filtri-label d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-industry me-1"></i>Filtra per Produttore</span>
+            <button class="btn btn-outline-secondary btn-sm btn-reset-filtri" id="resetFiltriBtn" type="button">
+              <i class="fas fa-times me-1"></i>Reset filtri
+            </button>
+          </div>
+          <div class="produttori-list" id="produttoriList">
+            <!-- Checkbox produttori generati dinamicamente -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-body p-0">
+      <div class="table-container" style="max-height: 500px;">
+        <table class="table table-sm table-bordered table-striped mb-0" id="listinoTable">
+          <thead class="table-light">
+            <tr id="listinoHead"></tr>
+          </thead>
+          <tbody id="listinoBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer bg-white small" id="statsFooter">
+      Nessun listino generato.
+    </div>
+  </div>
+
+  <div id="globalAlert" class="alert alert-warning d-none" role="alert"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+<script>
+  (function() {
+    // ---------- DOM Elements ----------
+    const csvFileInput = document.getElementById('csvFile');
+    const uploadError = document.getElementById('uploadError');
+    const ivaInput = document.getElementById('ivaInput');
+    const margineInput = document.getElementById('margineInput');
+    const generaBtn = document.getElementById('generaBtn');
+    const scaricaPdfBtn = document.getElementById('scaricaPdfBtn');
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    const deselectAllBtn = document.getElementById('deselectAllBtn');
+    const soloDisponibiliBtn = document.getElementById('soloDisponibiliBtn');
+    const previewHead = document.getElementById('previewHead');
+    const previewBody = document.getElementById('previewBody');
+    const listinoHead = document.getElementById('listinoHead');
+    const listinoBody = document.getElementById('listinoBody');
+    const statsFooter = document.getElementById('statsFooter');
+    const globalAlert = document.getElementById('globalAlert');
+    const filtriPannello = document.getElementById('filtriPannello');
+    const searchDescrizione = document.getElementById('searchDescrizione');
+    const produttoriList = document.getElementById('produttoriList');
+    const resetFiltriBtn = document.getElementById('resetFiltriBtn');
+
+    const EXPECTED_COLUMNS = [
+      "Codice", "Descrizione", "Categoria", "Produttore", "Prezzo",
+      "Disponibilita", "InArrivo", "Tips", "Ean", "Codice Produttore"
+    ];
+
+    const OUTPUT_COLUMNS = [
+      "Codice", "Descrizione", "Categoria", "Produttore", "Imponibile",
+      "Iva Inclusa", "Disponibilita", "InArrivo", "Tips"
+    ];
+
+    // ---------- Stato ----------
+    let csvData = [];
+    let listinoData = [];
+    let skippedRowsCount = 0;
+    let fileLoaded = false;
+    let soloDisponibili = false;
+    let testoRicerca = '';
+    let produttoriSelezionati = new Set(); // vuoto = tutti
+
+    // ---------- Utility: formato numero ----------
+    function formatNumberIT(value) {
+      if (value === null || value === undefined || isNaN(value)) return '';
+      return value.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function formatNumberPdf(value) {
+      if (value === null || value === undefined || isNaN(value)) return '';
+      return value.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function parseItalianNumber(str) {
+      if (typeof str !== 'string') str = String(str);
+      let cleaned = str.trim().replace(',', '.');
+      cleaned = cleaned.replace(/[^0-9.-]/g, '');
+      const num = parseFloat(cleaned);
+      return isNaN(num) ? null : num;
+    }
+
+    function isDisponibile(row) {
+      const dispStr = String(row['Disponibilita'] || '').trim();
+      if (dispStr === '') return false;
+      const dispNum = parseFloat(dispStr.replace(',', '.'));
+      return !isNaN(dispNum) && dispNum > 0;
+    }
+
+    function resetOutput() {
+      listinoData = [];
+      skippedRowsCount = 0;
+      soloDisponibili = false;
+      testoRicerca = '';
+      produttoriSelezionati.clear();
+      searchDescrizione.value = '';
+      soloDisponibiliBtn.classList.remove('btn-disponibili-active');
+      soloDisponibiliBtn.innerHTML = '<i class="fas fa-eye me-1"></i>Solo disponibili';
+      listinoHead.innerHTML = '';
+      listinoBody.innerHTML = '';
+      statsFooter.textContent = 'Nessun listino generato.';
+      scaricaPdfBtn.disabled = true;
+      selectAllBtn.disabled = true;
+      deselectAllBtn.disabled = true;
+      soloDisponibiliBtn.disabled = true;
+      filtriPannello.style.display = 'none';
+      globalAlert.classList.add('d-none');
+      globalAlert.textContent = '';
+    }
+
+    function showMissingColumnsError(missing) {
+      const msg = `❌ Il CSV non contiene le colonne attese. Mancano: ${missing.join(', ')}`;
+      uploadError.textContent = msg;
+      uploadError.classList.remove('d-none');
+      generaBtn.disabled = true;
+      fileLoaded = false;
+    }
+
+    function clearUploadError() {
+      uploadError.textContent = '';
+      uploadError.classList.add('d-none');
+    }
+
+    function checkColumns(headers) {
+      return EXPECTED_COLUMNS.filter(col => !headers.includes(col));
+    }
+
+    function renderPreview(data) {
+      if (!data || data.length === 0) {
+        previewHead.innerHTML = '';
+        previewBody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">Nessun dato</td></tr>';
+        return;
+      }
+      const headers = Object.keys(data[0]);
+      previewHead.innerHTML = headers.map(h => `<th>${h}</th>`).join('');
+      const previewRows = data.slice(0, 10);
+      previewBody.innerHTML = previewRows.map(row => {
+        return `<tr>${headers.map(h => `<td>${row[h] !== undefined ? row[h] : ''}</td>`).join('')}</tr>`;
+      }).join('');
+    }
+
+    // ---------- Popola lista produttori ----------
+    function popolaProduttori() {
+      // Estrai produttori unici, ordinati alfabeticamente
+      const setProd = new Set();
+      listinoData.forEach(row => {
+        const p = String(row['Produttore'] || '').trim();
+        if (p !== '') setProd.add(p);
+      });
+      const produttori = Array.from(setProd).sort((a, b) => a.localeCompare(b, 'it'));
+
+      produttoriList.innerHTML = '';
+      if (produttori.length === 0) {
+        produttoriList.innerHTML = '<div class="text-muted small">Nessun produttore disponibile</div>';
+        return;
+      }
+
+      // Pulsantini rapidi tutti/nessuno
+      const headerDiv = document.createElement('div');
+      headerDiv.className = 'd-flex gap-2 mb-2 pb-1 border-bottom';
+      headerDiv.innerHTML = `
+        <button type="button" class="btn btn-outline-primary btn-sm py-0 px-1" id="prodTuttiBtn" style="font-size:0.75rem;">Tutti</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1" id="prodNessunoBtn" style="font-size:0.75rem;">Nessuno</button>
+      `;
+      produttoriList.appendChild(headerDiv);
+
+      produttori.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'form-check';
+        const id = 'prod_' + p.replace(/[^a-zA-Z0-9]/g, '_');
+        const checked = produttoriSelezionati.size === 0 || produttoriSelezionati.has(p);
+        div.innerHTML = `
+          <input class="form-check-input prod-checkbox" type="checkbox" value="${p}" id="${id}" ${checked ? 'checked' : ''}>
+          <label class="form-check-label" for="${id}">${p}</label>
+        `;
+        produttoriList.appendChild(div);
+      });
+
+      // Listener checkbox
+      produttoriList.querySelectorAll('.prod-checkbox').forEach(cb => {
+        cb.addEventListener('change', function() {
+          aggiornaProduttoriSelezionati();
+          applicaFiltri();
+        });
+      });
+
+      // Pulsanti tutti/nessuno
+      document.getElementById('prodTuttiBtn').addEventListener('click', function() {
+        produttoriSelezionati.clear();
+        produttoriList.querySelectorAll('.prod-checkbox').forEach(cb => cb.checked = true);
+        applicaFiltri();
+      });
+      document.getElementById('prodNessunoBtn').addEventListener('click', function() {
+        produttoriSelezionati.clear();
+        // Nessuno selezionato = nessun filtro attivo (mostra tutti)
+        // Per "Nessuno" come esclusione totale, mettiamo un set vuoto ma forziamo esclusione
+        produttoriList.querySelectorAll('.prod-checkbox').forEach(cb => cb.checked = false);
+        // Impostiamo un flag speciale per "nessuno"
+        produttoriSelezionati.add('__NESSUNO__');
+        applicaFiltri();
+      });
+    }
+
+    function aggiornaProduttoriSelezionati() {
+      produttoriSelezionati.clear();
+      const checked = produttoriList.querySelectorAll('.prod-checkbox:checked');
+      if (checked.length === 0) {
+        // Nessuno selezionato: mostro tutti (comportamento di default)
+        return;
+      }
+      checked.forEach(cb => produttoriSelezionati.add(cb.value));
+    }
+
+    // ---------- Applica filtri (ricerca + produttori + disponibili) ----------
+    function applicaFiltri() {
+      renderListinoTable();
+      aggiornaStatistiche();
+    }
+
+    // ---------- Genera listino ----------
+    function generaListino() {
+      if (!csvData || csvData.length === 0) {
+        globalAlert.textContent = '⚠️ Nessun dato CSV caricato. Carica un file valido.';
+        globalAlert.classList.remove('d-none');
+        return;
+      }
+
+      const iva = parseFloat(ivaInput.value);
+      const margine = parseFloat(margineInput.value);
+      if (isNaN(iva) || iva < 0) {
+        globalAlert.textContent = '⚠️ Inserisci un valore IVA valido (≥ 0).';
+        globalAlert.classList.remove('d-none');
+        return;
+      }
+      if (isNaN(margine) || margine < 0 || margine >= 100) {
+        globalAlert.textContent = '⚠️ Inserisci un margine valido (tra 0 e 99.99).';
+        globalAlert.classList.remove('d-none');
+        return;
+      }
+
+      resetOutput();
+      globalAlert.classList.add('d-none');
+
+      const elaborati = [];
+      let scartati = 0;
+
+      for (let i = 0; i < csvData.length; i++) {
+        const row = csvData[i];
+        const prezzoStr = row['Prezzo'] !== undefined ? row['Prezzo'] : '';
+        const prezzoNum = parseItalianNumber(prezzoStr);
+
+        if (prezzoNum === null) {
+          scartati++;
+          continue;
+        }
+
+        const imponibile = prezzoNum / ((100 - margine) / 100);
+        const imponibileRound = Math.round(imponibile * 100) / 100;
+        const ivaInclusa = imponibileRound * (1 + iva / 100);
+        const ivaInclusaRound = Math.round(ivaInclusa * 100) / 100;
+
+        elaborati.push({
+          _selected: true,
+          'Codice': row['Codice'] || '',
+          'Descrizione': row['Descrizione'] || '',
+          'Categoria': row['Categoria'] || '',
+          'Produttore': row['Produttore'] || '',
+          'Imponibile': imponibileRound,
+          'Iva Inclusa': ivaInclusaRound,
+          'Disponibilita': row['Disponibilita'] || '',
+          'InArrivo': row['InArrivo'] || '',
+          'Tips': row['Tips'] || ''
+        });
+      }
+
+      elaborati.sort((a, b) => a['Imponibile'] - b['Imponibile']);
+
+      listinoData = elaborati;
+      skippedRowsCount = scartati;
+
+      if (listinoData.length === 0) {
+        listinoHead.innerHTML = '';
+        listinoBody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">Nessuna riga valida trovata.</td></tr>';
+        statsFooter.textContent = `Righe saltate: ${skippedRowsCount} (valori Prezzo non numerici) - Nessun listino generato.`;
+        scaricaPdfBtn.disabled = true;
+        return;
+      }
+
+      // Popola lista produttori e mostra pannello filtri
+      popolaProduttori();
+      filtriPannello.style.display = 'block';
+
+      renderListinoTable();
+
+      scaricaPdfBtn.disabled = false;
+      selectAllBtn.disabled = false;
+      deselectAllBtn.disabled = false;
+      soloDisponibiliBtn.disabled = false;
+
+      aggiornaStatistiche();
+    }
+
+    // ---------- Filtra le righe in base a tutti i criteri attivi ----------
+    function getRigheFiltrate() {
+      let righe = listinoData.map((r, idx) => ({ ...r, _idx: idx }));
+
+      // Filtro disponibilità
+      if (soloDisponibili) {
+        righe = righe.filter(r => isDisponibile(r));
+      }
+
+      // Filtro produttore (se almeno uno selezionato, o se "__NESSUNO__" presente)
+      if (produttoriSelezionati.has('__NESSUNO__')) {
+        righe = [];
+      } else if (produttoriSelezionati.size > 0) {
+        righe = righe.filter(r => produttoriSelezionati.has(String(r['Produttore'] || '').trim()));
+      }
+
+      // Filtro ricerca nella descrizione (case-insensitive)
+      if (testoRicerca.trim() !== '') {
+        const query = testoRicerca.trim().toLowerCase();
+        righe = righe.filter(r => String(r['Descrizione'] || '').toLowerCase().includes(query));
+      }
+
+      return righe;
+    }
+
+    // ---------- Render tabella listino ----------
+    function renderListinoTable() {
+      const righeDaMostrare = getRigheFiltrate();
+
+      listinoHead.innerHTML = '<th class="col-check"><input type="checkbox" class="form-check-input" id="headerCheckbox" checked></th>'
+        + OUTPUT_COLUMNS.map(col => `<th>${col}</th>`).join('');
+
+      if (righeDaMostrare.length === 0) {
+        listinoBody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">Nessun articolo da mostrare con i filtri attivi.</td></tr>';
+        aggiornaHeaderCheckbox();
+        return;
+      }
+
+      listinoBody.innerHTML = righeDaMostrare.map((row) => {
+        const imponibileFormattato = formatNumberIT(row['Imponibile']);
+        const ivaInclusaFormattata = formatNumberIT(row['Iva Inclusa']);
+        const checkedAttr = row._selected ? 'checked' : '';
+        const disp = isDisponibile(row);
+        const rowClass = disp ? '' : 'riga-esaurita';
+        return `<tr class="${rowClass}">
+          <td class="col-check"><input type="checkbox" class="form-check-input row-checkbox" data-idx="${row._idx}" ${checkedAttr}></td>
+          <td>${row['Codice']}</td>
+          <td>${row['Descrizione']}</td>
+          <td>${row['Categoria']}</td>
+          <td>${row['Produttore']}</td>
+          <td>${imponibileFormattato}</td>
+          <td>${ivaInclusaFormattata}</td>
+          <td>${row['Disponibilita']}</td>
+          <td>${row['InArrivo']}</td>
+          <td>${row['Tips']}</td>
+        </tr>`;
+      }).join('');
+
+      document.querySelectorAll('.row-checkbox').forEach(cb => {
+        cb.addEventListener('change', function() {
+          const idx = parseInt(this.getAttribute('data-idx'), 10);
+          listinoData[idx]._selected = this.checked;
+          aggiornaHeaderCheckbox();
+          aggiornaStatistiche();
+        });
+      });
+
+      const headerCb = document.getElementById('headerCheckbox');
+      if (headerCb) {
+        headerCb.addEventListener('change', function() {
+          const checked = this.checked;
+          document.querySelectorAll('.row-checkbox').forEach(cb => {
+            const idx = parseInt(cb.getAttribute('data-idx'), 10);
+            listinoData[idx]._selected = checked;
+            cb.checked = checked;
+          });
+          aggiornaStatistiche();
+        });
+      }
+
+      aggiornaHeaderCheckbox();
+    }
+
+    function aggiornaHeaderCheckbox() {
+      const headerCb = document.getElementById('headerCheckbox');
+      if (!headerCb) return;
+      const checkboxes = document.querySelectorAll('.row-checkbox');
+      const total = checkboxes.length;
+      const selezionati = Array.from(checkboxes).filter(cb => cb.checked).length;
+      headerCb.checked = total > 0 && selezionati === total;
+      headerCb.indeterminate = selezionati > 0 && selezionati < total;
+    }
+
+    function aggiornaStatistiche() {
+      const totale = listinoData.length;
+      const selezionati = listinoData.filter(r => r._selected).length;
+      const visibili = document.querySelectorAll('.row-checkbox').length;
+      let msg = `✅ Listino generato: ${totale} righe valide (ordinate per Imponibile crescente). Visibili: ${visibili}. Selezionate: ${selezionati}.`;
+      if (soloDisponibili) {
+        msg += ' 🔎 Filtro "Solo disponibili" attivo.';
+      }
+      if (testoRicerca.trim() !== '') {
+        msg += ` 🔎 Ricerca: "${testoRicerca}".`;
+      }
+      if (produttoriSelezionati.size > 0 && !produttoriSelezionati.has('__NESSUNO__')) {
+        msg += ` 🏭 Produttori filtrati: ${produttoriSelezionati.size}.`;
+      }
+      if (produttoriSelezionati.has('__NESSUNO__')) {
+        msg += ' 🏭 Nessun produttore selezionato.';
+      }
+      if (skippedRowsCount > 0) {
+        msg += ` ⚠️ ${skippedRowsCount} righe saltate per Prezzo non numerico.`;
+      }
+      statsFooter.textContent = msg;
+
+      aggiornaHeaderCheckbox();
+    }
+
+    // ---------- Genera PDF ----------
+    function generaPDF() {
+      if (!listinoData || listinoData.length === 0) {
+        alert('Nessun dato da esportare. Genera prima il listino.');
+        return;
+      }
+
+      // Applica gli stessi filtri della tabella (tranne la selezione che è già gestita)
+      let selezionati = getRigheFiltrate().filter(r => r._selected);
+
+      if (selezionati.length === 0) {
+        alert('Nessun articolo selezionato (con i filtri attivi). Seleziona almeno un articolo per generare il PDF.');
+        return;
+      }
+
+      // Ordina per Imponibile crescente (già ordinato, ma per sicurezza)
+      selezionati.sort((a, b) => a['Imponibile'] - b['Imponibile']);
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF('landscape', 'mm', 'A4');
+
+      doc.setFontSize(16);
+      doc.text('LISTINO CLIENTI ARIS COMPUTER', 14, 15);
+      doc.setFontSize(10);
+      const dataGen = new Date().toLocaleDateString('it-IT');
+      doc.text(`Data generazione: ${dataGen}`, 14, 22);
+      doc.text('Validità 5 gg lavorativi o esaurimento scorte', 14, 27);
+
+      const body = selezionati.map(row => [
+        row['Codice'],
+        row['Descrizione'],
+        row['Categoria'],
+        row['Produttore'],
+        formatNumberPdf(row['Imponibile']),
+        formatNumberPdf(row['Iva Inclusa']),
+        row['Disponibilita'],
+        row['InArrivo'],
+        row['Tips']
+      ]);
+
+      doc.autoTable({
+        head: [OUTPUT_COLUMNS],
+        body: body,
+        startY: 32,
+        styles: { fontSize: 7, cellPadding: 1.2, overflow: 'linebreak' },
+        headStyles: { fillColor: [13, 110, 253], textColor: 255, fontStyle: 'bold', fontSize: 7.5 },
+        alternateRowStyles: { fillColor: [240, 248, 255] },
+        margin: { top: 32, left: 8, right: 8 },
+        theme: 'grid',
+        columnStyles: {
+          0: { cellWidth: 32, overflow: 'linebreak' },                    // Codice
+          1: { cellWidth: 72, overflow: 'linebreak' },                    // Descrizione
+          2: { cellWidth: 22, overflow: 'linebreak' },                    // Categoria
+          3: { cellWidth: 22, overflow: 'linebreak' },                    // Produttore
+          4: { cellWidth: 22, halign: 'right' },                          // Imponibile
+          5: { cellWidth: 22, halign: 'right' },                          // Iva Inclusa
+          6: { cellWidth: 18, halign: 'center', overflow: 'linebreak' },  // Disponibilità (centrata)
+          7: { cellWidth: 20, overflow: 'linebreak' },                    // InArrivo
+          8: { cellWidth: 30, overflow: 'linebreak' }                     // Tips
+        }
+      });
+
+      doc.save('listino_clienti.pdf');
+    }
+
+    // ---------- Caricamento CSV ----------
+    csvFileInput.addEventListener('change', function(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      clearUploadError();
+      resetOutput();
+      fileLoaded = false;
+      generaBtn.disabled = true;
+
+      Papa.parse(file, {
+        header: true,
+        delimiter: ';',
+        skipEmptyLines: true,
+        encoding: 'UTF-8',
+        complete: function(results) {
+          if (results.errors.length > 0) {
+            uploadError.textContent = '❌ Errore nel parsing del CSV: ' + results.errors[0].message;
+            uploadError.classList.remove('d-none');
+            return;
+          }
+
+          const data = results.data;
+          if (!data || data.length === 0) {
+            uploadError.textContent = '❌ Il file CSV è vuoto.';
+            uploadError.classList.remove('d-none');
+            return;
+          }
+
+          const headers = results.meta.fields || [];
+          const missing = checkColumns(headers);
+
+          if (missing.length > 0) {
+            showMissingColumnsError(missing);
+            return;
+          }
+
+          csvData = data;
+          fileLoaded = true;
+          generaBtn.disabled = false;
+
+          renderPreview(csvData);
+          clearUploadError();
+          globalAlert.classList.add('d-none');
+        },
+        error: function(error) {
+          uploadError.textContent = '❌ Errore durante la lettura del file: ' + error.message;
+          uploadError.classList.remove('d-none');
+        }
+      });
+    });
+
+    // ---------- Eventi pulsanti ----------
+    generaBtn.addEventListener('click', generaListino);
+    scaricaPdfBtn.addEventListener('click', generaPDF);
+
+    selectAllBtn.addEventListener('click', function() {
+      document.querySelectorAll('.row-checkbox').forEach(cb => {
+        const idx = parseInt(cb.getAttribute('data-idx'), 10);
+        listinoData[idx]._selected = true;
+        cb.checked = true;
+      });
+      aggiornaHeaderCheckbox();
+      aggiornaStatistiche();
+    });
+
+    deselectAllBtn.addEventListener('click', function() {
+      document.querySelectorAll('.row-checkbox').forEach(cb => {
+        const idx = parseInt(cb.getAttribute('data-idx'), 10);
+        listinoData[idx]._selected = false;
+        cb.checked = false;
+      });
+      aggiornaHeaderCheckbox();
+      aggiornaStatistiche();
+    });
+
+    soloDisponibiliBtn.addEventListener('click', function() {
+      soloDisponibili = !soloDisponibili;
+      if (soloDisponibili) {
+        soloDisponibiliBtn.classList.add('btn-disponibili-active');
+        soloDisponibiliBtn.innerHTML = '<i class="fas fa-eye-slash me-1"></i>Mostra tutti';
+      } else {
+        soloDisponibiliBtn.classList.remove('btn-disponibili-active');
+        soloDisponibiliBtn.innerHTML = '<i class="fas fa-eye me-1"></i>Solo disponibili';
+      }
+      applicaFiltri();
+    });
+
+    // *** Ricerca nella descrizione (live) ***
+    searchDescrizione.addEventListener('input', function() {
+      testoRicerca = this.value;
+      applicaFiltri();
+    });
+
+    // *** Reset filtri ***
+    resetFiltriBtn.addEventListener('click', function() {
+      testoRicerca = '';
+      searchDescrizione.value = '';
+      produttoriSelezionati.clear();
+      produttoriList.querySelectorAll('.prod-checkbox').forEach(cb => cb.checked = true);
+      soloDisponibili = false;
+      soloDisponibiliBtn.classList.remove('btn-disponibili-active');
+      soloDisponibiliBtn.innerHTML = '<i class="fas fa-eye me-1"></i>Solo disponibili';
+      applicaFiltri();
+    });
+
+    // ---------- Init ----------
+    previewHead.innerHTML = '';
+    previewBody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">Nessun file caricato</td></tr>';
+    listinoHead.innerHTML = '';
+    listinoBody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">Premi "Genera listino" per elaborare i dati</td></tr>';
+
+  })();
+</script>
+</body>
+</html>
